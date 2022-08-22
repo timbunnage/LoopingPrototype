@@ -335,6 +335,11 @@ MonoBehaviour:
   Latency: 3
   PlayAndPause: 32
   ReverbOnOffSwitch: 13
+  StartRecordingKey: 115
+  StopRecordingKey: 100
+  StartOverdubKey: 120
+  MaxLoopDuration: 10
+  MaxLoopLayers: 10
 --- !u!4 &2061327268
 Transform:
   m_ObjectHideFlags: 0

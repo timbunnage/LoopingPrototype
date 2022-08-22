@@ -6,6 +6,14 @@ using System.Collections;
 // Title: FMOD & Unity | Recording The Players Voice And Playing It Back At Runtime
 // Author: S
 
+enum State 
+{
+    START,
+    RECORDING,
+    PLAYBACK,
+    OVERDUBBING,
+    OVERDUBBING_AWAIT
+}
 
 public class RecordMic : MonoBehaviour
 {
@@ -19,8 +27,16 @@ public class RecordMic : MonoBehaviour
     public KeyCode PlayAndPause;
     public KeyCode ReverbOnOffSwitch;
 
+    public KeyCode StartRecordingKey;
+    public KeyCode StopRecordingKey;
+    public KeyCode StartOverdubKey;
+
+    public uint MaxLoopDuration = 10;
+    public uint MaxLoopLayers = 10;
+
     //FMOD Objects
     private FMOD.Sound sound;
+    private FMOD.Sound[] sounds;
     private FMOD.CREATESOUNDEXINFO exinfo;
     private FMOD.Channel channel;
     private FMOD.ChannelGroup channelGroup;
@@ -40,6 +56,15 @@ public class RecordMic : MonoBehaviour
     private bool dspEnabled = false;
     private bool playOrPause = true;
     private bool playOkay = false;
+
+    private State state = State.START;
+
+    private bool playbackStarted = false; 
+
+    private float loopDuration = 0f;
+
+    private float latency;  // Testing performance: variable for checking latency 
+    private int currNumSounds = 0; // How many sounds we have recorded so far
 
     void Start()
     {
@@ -74,11 +99,17 @@ public class RecordMic : MonoBehaviour
         exinfo.numchannels = NumOfChannels;
         exinfo.format = FMOD.SOUND_FORMAT.PCM16;
         exinfo.defaultfrequency = SampleRate;
-        exinfo.length = (uint)SampleRate * sizeof(short) * (uint)NumOfChannels;
+        exinfo.length = (uint)SampleRate * sizeof(short) * (uint)NumOfChannels * MaxLoopDuration;
 
 
         //Step 4: Create an FMOD Sound "object". This is what will hold our voice as it is recorded.
 
+        // List of sounds
+        sounds = new FMOD.Sound[MaxLoopLayers];
+        for (int i = 0; i < MaxLoopLayers; i++) {
+            RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER,
+                ref exinfo, out sounds[i]);
+        }
 
         RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER, 
             ref exinfo, out sound);
@@ -87,52 +118,120 @@ public class RecordMic : MonoBehaviour
         //Step 5: Start recording through our chosen device into our Sound object.
 
 
-        RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true);
+        // RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true);
 
 
         // Step 6: Start a Corutine that will tell our Sound object to play after a ceratin amount of time.
 
 
-        StartCoroutine(Wait());
+        // StartCoroutine(Wait());
     }
 
 
-    IEnumerator Wait()
-    {
-        yield return new WaitForSeconds(Latency);
-        RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
-        playOkay = true;
-        Debug.Log("Ready To Play");
+    // IEnumerator Wait()
+    // {
+    //     yield return new WaitForSeconds(Latency);
+    //     RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
+    //     playOkay = true;
+    //     Debug.Log("Ready To Play");
+    // }
+
+    // Begin recording audio
+    void StartRecording(int soundObjectIndex) {
+        RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sounds[soundObjectIndex], false);
+    }
+
+    void StopRecording () {
+        RuntimeManager.CoreSystem.recordStop(RecordingDeviceIndex);
     }
 
 
-    void Update()
-    {
-        //Step 7: Once the Coroutine has started playing our sound, we check to see if a particular button has
-        //        been pressed and if it has, then we pause or unpasue the channel that the Sound object is
-        //        playing through.
 
-
-        if (Input.GetKeyDown(PlayAndPause) && playOkay)
+    void Update() {
+        switch(state)
         {
-            playOrPause = !playOrPause;
-            channel.setPaused(playOrPause);
+            case State.START:
+                if (Input.GetKeyDown(StartRecordingKey)) {
+                    StartRecording(0);
+                    state = State.RECORDING;
+                    Debug.Log("Recording Started");
+                } break;
+            
+            case State.RECORDING:
+                loopDuration += Time.deltaTime;
+                if (Input.GetKey(StopRecordingKey)) {
+                    latency = Time.time; // check for latency
+                    Debug.Log("Recording Stopped");
+                    Debug.Log("Loop Duration (sec): " + loopDuration);
+
+                    
+                    // set loop duration for all sounds objects
+                    for (int i = 0; i < MaxLoopLayers; i++)
+                        sounds[i].setLoopPoints(0, FMOD.TIMEUNIT.MS, (uint)(loopDuration * 1000), FMOD.TIMEUNIT.MS);
+
+                    // Play first sound
+                    RuntimeManager.CoreSystem.playSound(sounds[0], channelGroup, false, out channel);
+                    currNumSounds += 1;
+
+                    Debug.Log("Latency (ms) : " + (Time.time - latency) * 1000);
+                    Debug.Log("Playback Started");
+
+                    state = State.PLAYBACK;
+                } 
+                break;
+            
+            case State.PLAYBACK:
+                if (!playbackStarted) {
+
+                } break;
+                
+        
+
+            default:
+                break;
         }
 
 
-        //Optional
-        //Step 8: Set a reverb to the Sound object we're recording into and turn it on or off with a new button.
 
 
-        if (Input.GetKeyDown(ReverbOnOffSwitch))
-        {
-            FMOD.REVERB_PROPERTIES propOn = FMOD.PRESET.ROOM();
-            FMOD.REVERB_PROPERTIES propOff = FMOD.PRESET.OFF();
 
-            dspEnabled = !dspEnabled;
-
-            RuntimeManager.CoreSystem.setReverbProperties(1, ref dspEnabled ? ref propOn : ref propOff);
-        }
-
+        // if (Input.GetKeyDown(PlayAndPause) && playOkay)
+        // {
+        //     playOrPause = !playOrPause;
+        //     channel.setPaused(playOrPause);
+        // }
     }
+
+
+
+
+    // void Update()
+    // {
+    //     //Step 7: Once the Coroutine has started playing our sound, we check to see if a particular button has
+    //     //        been pressed and if it has, then we pause or unpasue the channel that the Sound object is
+    //     //        playing through.
+
+
+    //     if (Input.GetKeyDown(PlayAndPause) && playOkay)
+    //     {
+    //         playOrPause = !playOrPause;
+    //         channel.setPaused(playOrPause);
+    //     }
+
+
+    //     //Optional
+    //     //Step 8: Set a reverb to the Sound object we're recording into and turn it on or off with a new button.
+
+
+    //     if (Input.GetKeyDown(ReverbOnOffSwitch))
+    //     {
+    //         FMOD.REVERB_PROPERTIES propOn = FMOD.PRESET.ROOM();
+    //         FMOD.REVERB_PROPERTIES propOff = FMOD.PRESET.OFF();
+
+    //         dspEnabled = !dspEnabled;
+
+    //         RuntimeManager.CoreSystem.setReverbProperties(1, ref dspEnabled ? ref propOn : ref propOff);
+    //     }
+
+    // }
 }
