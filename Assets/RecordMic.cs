@@ -63,8 +63,12 @@ public class RecordMic : MonoBehaviour
 
     private float loopDuration = 0f;
 
-    private float latency;  // Testing performance: variable for checking latency 
+    private float loopTracker = 0f; // Tracks what point in time we are in the loop, used for overdubbing
     private int currNumSounds = 0; // How many sounds we have recorded so far
+
+    private float latency;  // Testing performance: variable for checking latency 
+
+    private float _sameLoopVar = 0f;
 
     void Start()
     {
@@ -145,6 +149,10 @@ public class RecordMic : MonoBehaviour
         RuntimeManager.CoreSystem.recordStop(RecordingDeviceIndex);
     }
 
+    void trackLoop() {
+        
+    }
+
 
 
     void Update() {
@@ -160,7 +168,8 @@ public class RecordMic : MonoBehaviour
             case State.RECORDING:
                 loopDuration += Time.deltaTime;
                 if (Input.GetKey(StopRecordingKey)) {
-                    latency = Time.time; // check for latency
+                    latency = Time.time; // check for 
+                    StopRecording();
                     Debug.Log("Recording Stopped");
                     Debug.Log("Loop Duration (sec): " + loopDuration);
 
@@ -171,6 +180,7 @@ public class RecordMic : MonoBehaviour
 
                     // Play first sound
                     RuntimeManager.CoreSystem.playSound(sounds[0], channelGroup, false, out channel);
+                    loopTracker = 0f;
                     currNumSounds += 1;
 
                     Debug.Log("Latency (ms) : " + (Time.time - latency) * 1000);
@@ -180,12 +190,41 @@ public class RecordMic : MonoBehaviour
                 } 
                 break;
             
+            // Playing back audio, not overdubbing
             case State.PLAYBACK:
-                if (!playbackStarted) {
-
+                loopTracker = (loopTracker + Time.deltaTime) % loopDuration;
+                if (Input.GetKey(StartOverdubKey)) {
+                    Debug.Log("Begin awaiting to overdub");
+                    state = State.OVERDUBBING_AWAIT;
                 } break;
-                
+
+            // Playing back audio, waiting for the next loop to begin overdubbing
+            case State.OVERDUBBING_AWAIT:
+                loopTracker = (loopTracker + Time.deltaTime) % loopDuration;
+                // if within 25ms of loopBegin
+                if ((loopTracker + 0.025) % loopDuration < 0.050) {
+                    // start recording next sound
+                    StartRecording(currNumSounds);
+                    Debug.Log("Begin overdubbing");
+
+                    state = State.OVERDUBBING;
+                    _sameLoopVar = 0f;  // variable to track current loop
+                } break;
         
+            case State.OVERDUBBING:
+                loopTracker = (loopTracker + Time.deltaTime) % loopDuration;
+                _sameLoopVar += Time.deltaTime; // make sure we aren't recording and stopping in the same loop
+                if ((loopTracker + 0.025) % loopDuration < 0.050 && _sameLoopVar > 0.5) {
+                    StopRecording();
+
+                    // Play recorded sound
+                    RuntimeManager.CoreSystem.playSound(sounds[currNumSounds], channelGroup, false, out channel);
+                    currNumSounds += 1;
+
+                    Debug.Log("Overdubbing Finished");
+                    state = State.PLAYBACK;
+                }
+                break;
 
             default:
                 break;
