@@ -15,6 +15,8 @@ public class RecordVideo : MonoBehaviour
     public KeyCode BeginOverdubKey;
 
     VideoCapture m_VideoCapture = null;
+
+    CameraParameters m_CameraParameters;
     float m_stopRecordingTimer = float.MaxValue;
     
     [SerializeField]
@@ -38,7 +40,7 @@ public class RecordVideo : MonoBehaviour
     // Use this for initialization
     void Start()
     {
-        
+        prepareVideoCapture();
     }
 
     async void Update()
@@ -113,7 +115,13 @@ public class RecordVideo : MonoBehaviour
 
     }
 
-    void StartVideoCaptureTest()
+    void StartVideoCaptureTest() {
+        m_VideoCapture.StartVideoModeAsync(m_CameraParameters,
+            VideoCapture.AudioState.ApplicationAndMicAudio,
+            OnStartedVideoCaptureMode);
+    }
+
+    void prepareVideoCapture()
     {
         Resolution cameraResolution = VideoCapture.SupportedResolutions.OrderByDescending((res) => res.width * res.height).First();
         Debug.Log(cameraResolution);
@@ -135,9 +143,10 @@ public class RecordVideo : MonoBehaviour
                 cameraParameters.cameraResolutionHeight = cameraResolution.height;
                 cameraParameters.pixelFormat = CapturePixelFormat.BGRA32;
 
-                m_VideoCapture.StartVideoModeAsync(cameraParameters,
-                    VideoCapture.AudioState.ApplicationAndMicAudio,
-                    OnStartedVideoCaptureMode);
+                m_CameraParameters = cameraParameters;
+                // m_VideoCapture.StartVideoModeAsync(cameraParameters,
+                //     VideoCapture.AudioState.ApplicationAndMicAudio,
+                //     OnStartedVideoCaptureMode);
             }
             else
             {
